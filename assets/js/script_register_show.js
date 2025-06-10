@@ -22,7 +22,7 @@ function createUser() {
   };
 
   // Enviar al backend
-  fetch("http://127.0.0.1:8000/users/me/create", {
+  fetch("https://login-fastapi-9b3b.onrender.com/users/me/create", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
