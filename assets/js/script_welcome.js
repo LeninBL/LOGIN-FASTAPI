@@ -4,7 +4,7 @@ document
     event.preventDefault();
 
     try {
-      await fetch("https://login-fastapi-9b3b.onrender.com/logout", {
+      await fetch("/logout", {
         method: "POST",
         credentials: "include",
       });
