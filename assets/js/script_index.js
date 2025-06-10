@@ -9,14 +9,17 @@ document
     submitButton.disabled = true;
 
     try {
-      const response = await fetch("/token", {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: `username=${encodeURIComponent(
-          username
-        )}&password=${encodeURIComponent(password)}`,
-        credentials: "include",
-      });
+      const response = await fetch(
+        "https://login-fastapi-9b3b.onrender.com/token",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: `username=${encodeURIComponent(
+            username
+          )}&password=${encodeURIComponent(password)}`,
+          credentials: "include",
+        }
+      );
 
       if (!response.ok) {
         const result = await response.json();
@@ -25,7 +28,7 @@ document
         return;
       }
 
-      window.location.href = "/users/me";
+      window.location.href = "https://login-fastapi-9b3b.onrender.com/users/me";
     } catch (error) {
       console.error("Error:", error);
       document.getElementById("errorMessage").textContent = "Error de conexión";
