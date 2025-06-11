@@ -1,32 +1,46 @@
-function createUser() {
+async function isSessionValid() {
+  const response = await fetch(
+    "https://login-fastapi-9b3b.onrender.com/verify-token",
+    {
+      credentials: "include", // Necesario para que se envíen las cookies
+    }
+  );
+
+  return response.ok;
+}
+async function createUser() {
+  const sessionIsValid = await isSessionValid();
+  if (!sessionIsValid) {
+    alert("Tu sesión ha expirado. Por favor, vuelve a iniciar sesión.");
+    window.location.href = "https://login-fastapi-9b3b.onrender.com/"; // O redirige a la página de login
+    return;
+  }
+
   const username = document.getElementById("username").value.trim();
   const password = document.getElementById("new-password").value;
   const confirmPassword = document.getElementById("confirm-password").value;
 
-  // Validación de campos vacíos
   if (!username || !password || !confirmPassword) {
     alert("Por favor, completa todos los campos.");
     return;
   }
 
-  // Validación de coincidencia de contraseñas
   if (password !== confirmPassword) {
     alert("Las contraseñas no coinciden.");
     return;
   }
 
-  // Crear el objeto de usuario
   const user = {
     username: username,
     hashed_password: password,
   };
 
-  // Enviar al backend
   fetch("https://login-fastapi-9b3b.onrender.com/users/me/create", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
+    credentials: "include", // Esto envía las cookies
     body: JSON.stringify(user),
   })
     .then((response) => {
@@ -40,7 +54,6 @@ function createUser() {
     .then((data) => {
       alert("Usuario creado exitosamente");
       console.log("Respuesta del servidor:", data);
-      // Limpiar formulario si deseas
       document.getElementById("register-form").reset();
     })
     .catch((error) => {

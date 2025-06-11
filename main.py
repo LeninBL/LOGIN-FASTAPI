@@ -1,3 +1,4 @@
+from fastapi import Cookie
 from datetime import datetime, timedelta, timezone
 from fastapi import FastAPI, Depends, HTTPException, status, Response
 from fastapi.security import OAuth2PasswordRequestForm
@@ -114,12 +115,14 @@ def get_user_details(db, user_id: int):
     return db.query(UserDB).filter(UserDB.user_id == user_id).first()
 
 # Función para crear el token de acceso
-def create_access_token(data: dict):
+def create_access_token(data: dict, expires_delta: timedelta = timedelta(minutes=5)):
     to_encode = data.copy()
-    # Incluir timestamp de la última actividad
-    to_encode['last_activity'] = datetime.now(timezone.utc).isoformat()
-    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-    return encoded_jwt
+    expire = datetime.now(timezone.utc) + expires_delta
+    to_encode.update({
+        "exp": expire,
+        "last_activity": datetime.now(timezone.utc).isoformat()
+    })
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 # Verificar si la sesión está expirada por inactividad
 def is_session_expired(last_activity: str, inactivity_limit_minutes: int = 1):
@@ -127,6 +130,49 @@ def is_session_expired(last_activity: str, inactivity_limit_minutes: int = 1):
     now = datetime.now(timezone.utc)
     inactivity_duration = now - last_activity_time
     return inactivity_duration > timedelta(minutes=inactivity_limit_minutes)
+
+def token_expired(token: str) -> bool:
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        exp = payload.get("exp")
+        if exp is None:
+            return True
+        if datetime.fromtimestamp(exp, timezone.utc) < datetime.now(timezone.utc):
+
+            return True
+        return False
+    except JWTError:
+        return True
+
+
+@app.middleware("http")
+async def check_token_expiry(request: Request, call_next):
+    token = request.cookies.get("access_token")
+    if token:
+        try:
+            payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+            exp = payload.get("exp")
+            if exp and datetime.fromtimestamp(exp, timezone.utc) < datetime.now(timezone.utc):
+                response = RedirectResponse("/", status_code=302)
+                response.delete_cookie("access_token")
+                response.set_cookie(
+                    key="session_expired",
+                    value="true",
+                    httponly=True,
+                    secure=True,
+                    samesite="Lax",
+                    max_age=3
+                )
+                return response
+        except JWTError:
+            response = RedirectResponse("/", status_code=302)
+            response.delete_cookie("access_token")
+            return response
+
+    response = await call_next(request)
+    return response
+
+
 
 
 # Ruta para login
@@ -171,6 +217,23 @@ async def read_root(request: Request):
     response.headers["Pragma"] = "no-cache"
     response.headers["Expires"] = "0"
     return response
+
+
+@app.get("/verify-token")
+async def verify_token(response: Response, access_token: Optional[str] = Cookie(None)):
+    if not access_token or token_expired(access_token):
+        response.delete_cookie(key="access_token")
+        response.set_cookie(
+            key="session_expired",
+            value="true",
+            httponly=True,
+            secure=True,
+            samesite="Lax",
+            max_age=3
+        )
+        raise HTTPException(status_code=401, detail="Token expirado")
+    return {"status": "active"}
+
 
 # Rutas protegidas
 @app.get("/users/me")
@@ -342,7 +405,21 @@ async def read_users_me_register_show(request: Request):
 
 
 @app.post("/users/me/create")
-def create_user(user: User, db: Session = Depends(get_db)):
+def create_user(user: User, request: Request, db: Session = Depends(get_db)):
+    token = request.cookies.get("access_token")
+
+    if not token or token_expired(token):
+        raise HTTPException(status_code=401, detail="Token expirado")
+
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        last_activity = payload.get("last_activity")
+        if not last_activity or is_session_expired(last_activity):
+            raise HTTPException(status_code=401, detail="Sesión expirada")
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Token inválido")
+
+    # Validación pasada, ahora sigue la creación de usuario
     db_user = db.query(UserDB).filter(UserDB.username == user.username).first()
     if db_user:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="El usuario ya existe")
